@@ -201,6 +201,16 @@ func (r *ClaudeBudgetReservation) usageCost(raw []byte) (int64, error) {
 	for key, value := range usage {
 		switch key {
 		case "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "cache_creation", "thinking_tokens", "service_tier", "inference_geo":
+		case "output_tokens_details":
+			var details map[string]int64
+			if json.Unmarshal(value, &details) != nil {
+				return 0, fmt.Errorf("invalid output token details")
+			}
+			for category, n := range details {
+				if category != "thinking_tokens" || n < 0 || n > output {
+					return 0, fmt.Errorf("unpriced output token details")
+				}
+			}
 		case "server_tool_use":
 			var tools map[string]int64
 			if json.Unmarshal(value, &tools) != nil {

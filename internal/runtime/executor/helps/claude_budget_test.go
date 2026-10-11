@@ -219,7 +219,7 @@ func TestClaudeBudgetRawUsageCacheTTLAndThinking(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 10*4 + 2*20 + 20*.2 + 3*5 + 4*8 = 131 microdollars.
-	usage := `{"input_tokens":10,"output_tokens":2,"thinking_tokens":1,"cache_read_input_tokens":20,"cache_creation_input_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}`
+	usage := `{"input_tokens":10,"output_tokens":2,"thinking_tokens":1,"output_tokens_details":{"thinking_tokens":1},"cache_read_input_tokens":20,"cache_creation_input_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}`
 	cost, err := r.usageCost([]byte(usage))
 	if err != nil || cost != 131 {
 		t.Fatalf("wrong cache/thinking cost: %d %v", cost, err)
