@@ -32,6 +32,8 @@ upstream:
         allowed-betas:
           - interleaved-thinking-2025-05-14
           - fine-grained-tool-streaming-2025-05-14
+          - per-turn-control-2026-07-01
+          - inline-tools-2026-09-15
         models:
           claude-opus-5-5:
             max-input-tokens: 1000000
@@ -131,13 +133,13 @@ The guard never restores a filtered field. Ambiguous duplicate JSON keys are als
 rejected before sending.
 
 Standard first-party Messages inference supports text, images, documents, thinking,
-client-executed custom tools, and the listed client-executed computer/bash/editor
+client-executed custom tools (including inline `tool_addition` definitions), and the listed client-executed computer/bash/editor
 tool versions. The guard rejects fast mode, automatic/priority tiers, regional
 inference premiums, server tools, remote MCP, containers, compaction/extra sampling,
 unknown tool versions, unknown top-level request features, and unapproved betas.
 Do not approve a beta unless its billing is bounded by the configured rates and
 single-sampling ceilings. In particular, do not approve server-side model fallback.
-Ordinary Claude SDK requests need no beta allowlist additions; CLI fingerprint
+Claude client versions and model capabilities emit different beta headers; CLI fingerprint
 opt-ins may need explicitly verified, nonbilling betas. New billable features
 require implementation and tests before activation. The final payload is never
 silently rewritten to remove these features.
