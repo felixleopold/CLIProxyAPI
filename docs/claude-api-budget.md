@@ -153,6 +153,11 @@ be inferred from Anthropic prices.
 
 ## Status and live adjustments
 
+On Linux, v8.0.21 watches the config file itself. Save edits in place (preserving
+its inode) for hot reload, or restart the gateway after replacing the file.
+Reading the management config endpoint alone does not prove the executor reloaded:
+verify the applied ledger settings on the next protected request.
+
 The atomic JSON state contains no secrets. Inspect it locally without an API/UI:
 
 ```sh
