@@ -38,6 +38,15 @@ func TestIsCodexTerminalEmptyIncomplete(t *testing.T) {
 		t.Fatal("expected true for true empty incomplete with numeric 0 tokens")
 	}
 
+	interrupted := []byte(`{"type":"response.incomplete","response":{"output":[],"usage":{"output_tokens":0},"incomplete_details":{"reason":"interrupted"}}}`)
+	if IsCodexTerminalEmptyIncomplete(interrupted, 0, false) {
+		t.Fatal("intentional interruption must not be treated as an empty failure")
+	}
+	limited := []byte(`{"type":"response.incomplete","response":{"output":[],"usage":{"output_tokens":0},"incomplete_details":{"reason":"max_output_tokens"}}}`)
+	if !IsCodexTerminalEmptyIncomplete(limited, 0, false) {
+		t.Fatal("other zero-output incomplete responses must remain failures")
+	}
+
 	// Case 2: Partial output with non-empty text deltas emitted
 	if IsCodexTerminalEmptyIncomplete(trueEmpty, 0, true) {
 		t.Fatal("expected false when output deltas were observed")

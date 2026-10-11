@@ -22,13 +22,15 @@ import (
 // responsesLocalInterrupt cancels an in-flight HTTP turn. A websocket upstream
 // does not use it; that interrupt is written to the existing socket instead.
 type responsesLocalInterrupt struct {
-	mu     sync.Mutex
-	active bool
-	frames chan []byte
+	mu          sync.Mutex
+	active      bool
+	responseID  string
+	terminalIDs map[string]struct{}
+	frames      chan []byte
 }
 
 func newResponsesLocalInterrupt() *responsesLocalInterrupt {
-	return &responsesLocalInterrupt{frames: make(chan []byte, 1)}
+	return &responsesLocalInterrupt{frames: make(chan []byte, 1), terminalIDs: make(map[string]struct{})}
 }
 
 func (s *responsesLocalInterrupt) begin() {
@@ -46,11 +48,42 @@ func (s *responsesLocalInterrupt) end() {
 	}
 	s.mu.Lock()
 	s.active = false
+	if s.responseID != "" {
+		s.terminalIDs[s.responseID] = struct{}{}
+		s.responseID = ""
+	}
 	select {
 	case <-s.frames:
 	default:
 	}
 	s.mu.Unlock()
+}
+
+// Observe lifecycle events before publishing them to the client, so an immediate
+// interrupt can only target the response currently being forwarded.
+func (s *responsesLocalInterrupt) observe(payload []byte) {
+	if s == nil {
+		return
+	}
+	responseID := gjson.GetBytes(payload, "response.id")
+	if responseID.Type != gjson.String || responseID.String() == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch gjson.GetBytes(payload, "type").String() {
+	case "response.created":
+		s.responseID = responseID.String()
+	case "response.completed", "response.done", "response.incomplete", "response.failed":
+		s.terminalIDs[responseID.String()] = struct{}{}
+		if s.responseID == responseID.String() {
+			s.responseID = ""
+			select {
+			case <-s.frames:
+			default:
+			}
+		}
+	}
 }
 
 func (s *responsesLocalInterrupt) deliver(payload []byte) bool {
@@ -59,7 +92,11 @@ func (s *responsesLocalInterrupt) deliver(payload []byte) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.active {
+	responseID := gjson.GetBytes(payload, "response_id").String()
+	if _, terminal := s.terminalIDs[responseID]; terminal {
+		return true
+	}
+	if !s.active || s.responseID == "" || responseID != s.responseID {
 		return false
 	}
 	select {

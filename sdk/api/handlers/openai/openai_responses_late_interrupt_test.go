@@ -250,3 +250,91 @@ func TestResponsesInterruptDiagnosticsAreSanitized(t *testing.T) {
 		t.Fatal("timeline was not finalized")
 	}
 }
+
+// A completed HTTP response must not cancel the next HTTP response on the socket.
+func TestResponsesLateHTTPInterruptDoesNotCancelNextTurn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var calls atomic.Int32
+	canceled := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call := calls.Add(1)
+		id := fmt.Sprintf("http-%d", call)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":%q}}\n\n", id)
+		w.(http.Flusher).Flush()
+		if call == 2 {
+			<-r.Context().Done()
+			close(canceled)
+			return
+		}
+		_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":%q,\"status\":\"completed\",\"output\":[]}}\n\n", id)
+	}))
+	defer upstream.Close()
+	cfg := &config.Config{}
+	manager := coreauth.NewManager(nil, nil, nil)
+	manager.SetConfig(cfg)
+	manager.RegisterExecutor(runtimeexecutor.NewCodexAutoExecutor(cfg))
+	const authID, model = "late-http-interrupt", "late-http-model"
+	if _, err := manager.Register(context.Background(), &coreauth.Auth{
+		ID: authID, Provider: "codex", Status: coreauth.StatusActive,
+		Attributes: map[string]string{"api_key": "synthetic-key", "base_url": upstream.URL},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	registry.GetGlobalRegistry().RegisterClient(authID, "codex", []*registry.ModelInfo{{ID: model}})
+	defer registry.GetGlobalRegistry().UnregisterClient(authID)
+	handler := NewOpenAIResponsesAPIHandler(handlers.NewBaseAPIHandlers(&cfg.SDKConfig, manager))
+	router := gin.New()
+	router.GET("/v1/responses", handler.ResponsesWebsocket)
+	downstream := httptest.NewServer(router)
+	defer downstream.Close()
+	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(downstream.URL, "http")+"/v1/responses", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	send := func(payload string) {
+		t.Helper()
+		if err := client.WriteMessage(websocket.TextMessage, []byte(payload)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expect := func(event, id string) {
+		t.Helper()
+		_, payload, err := client.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gjson.GetBytes(payload, "type").String() != event || gjson.GetBytes(payload, "response.id").String() != id {
+			t.Fatalf("expected %s for %s, got %s", event, id, payload)
+		}
+	}
+	create := fmt.Sprintf(`{"type":"response.create","model":%q,"input":[]}`, model)
+	send(create)
+	expect("response.created", "http-1")
+	expect("response.completed", "http-1")
+	send(create)
+	expect("response.created", "http-2")
+	send(`{"type":"response.interrupt","response_id":"http-1"}`)
+	// The error is a deterministic barrier: the old interrupt must be consumed
+	// without canceling http-2, and an unknown ID must be rejected.
+	send(`{"type":"response.interrupt","response_id":"unknown"}`)
+	expect("error", "")
+	select {
+	case <-canceled:
+		t.Fatal("old or unknown interrupt canceled http-2")
+	default:
+	}
+	send(`{"type":"response.interrupt","response_id":"http-2"}`)
+	expect("response.incomplete", "http-2")
+	select {
+	case <-canceled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("active interrupt did not cancel HTTP")
+	}
+	send(`{"type":"response.interrupt","response_id":"http-2"}`)
+	send(create)
+	expect("response.created", "http-3")
+	expect("response.completed", "http-3")
+}

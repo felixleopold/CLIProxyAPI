@@ -80,6 +80,7 @@ func (h *OpenAIResponsesAPIHandler) forwardResponsesWebsocket(
 	for {
 		select {
 		case interruptPayload := <-localFrames:
+			opts.localInterrupt.end()
 			return completeResponsesWebsocketLocalInterrupt(writer, wsTimelineLog, cancel, interruptPayload, outputItemsByIndex, outputItemsFallback, pendingToolCallIDs)
 		case <-c.Request.Context().Done():
 			cancel(c.Request.Context().Err())
@@ -160,6 +161,7 @@ func (h *OpenAIResponsesAPIHandler) forwardResponsesWebsocket(
 
 			payloads := websocketJSONPayloadsFromChunk(chunk)
 			for i := range payloads {
+				opts.localInterrupt.observe(payloads[i])
 				if gjson.GetBytes(payloads[i], "type").String() == "response.created" {
 					responseStarted = true
 					completed = false

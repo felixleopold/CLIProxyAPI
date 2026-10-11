@@ -70,7 +70,7 @@ func TestResponsesInterruptInFlight(t *testing.T) {
 					t.Errorf("interrupt changed: %s", payload)
 					return
 				}
-				write(`{"type":"response.incomplete","response":{"id":"r1","status":"incomplete","incomplete_details":{"reason":"interrupted"},"usage":{"output_tokens":7},"output":[]}}`)
+				write(`{"type":"response.incomplete","response":{"id":"r1","status":"incomplete","incomplete_details":{"reason":"interrupted"},"usage":{"output_tokens":0},"output":[]}}`)
 				if payload := read(); gjson.GetBytes(payload, "type").String() != "response.create" {
 					t.Errorf("expected follow-up response.create, got %s", payload)
 					return
