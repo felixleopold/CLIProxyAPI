@@ -10,6 +10,25 @@ import (
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
 
+func TestClaudeBudgetSynthesisPreservesSharedIDAcrossKeyRotation(t *testing.T) {
+	cfg := &config.Config{ClaudeKey: []config.ClaudeKey{{APIKey: "fake-first", BudgetID: "shared"}}}
+	ctx := &SynthesisContext{Config: cfg, Now: time.Now(), IDGenerator: NewStableIDGenerator()}
+	synth := NewConfigSynthesizer()
+	first, err := synth.Synthesize(ctx)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first synthesis: %v", err)
+	}
+	cfg.ClaudeKey[0].APIKey = "fake-rotated"
+	ctx.IDGenerator = NewStableIDGenerator()
+	second, err := synth.Synthesize(ctx)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second synthesis: %v", err)
+	}
+	if first[0].ID == second[0].ID || first[0].Attributes["claude_budget_id"] != "shared" || second[0].Attributes["claude_budget_id"] != "shared" {
+		t.Fatal("credential rotation changed or dropped stable budget selection")
+	}
+}
+
 func TestNewConfigSynthesizer(t *testing.T) {
 	synth := NewConfigSynthesizer()
 	if synth == nil {

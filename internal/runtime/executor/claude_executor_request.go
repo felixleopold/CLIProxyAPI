@@ -1480,6 +1480,52 @@ func doClaudeUpstreamRequest(client *http.Client, req *http.Request) (*http.Resp
 	return client.Do(req)
 }
 
+// doClaudeUpstreamRequest reserves against the selected paid credential
+// and the final payload. OAuth and unselected keys retain the original send path.
+func (e *ClaudeExecutor) doClaudeUpstreamRequest(client *http.Client, req *http.Request, auth *cliproxyauth.Auth) (*http.Response, *helps.ClaudeBudgetReservation, error) {
+	id, budget, err := helps.ClaudeBudgetForAuth(e.cfg, auth)
+	if err != nil {
+		return nil, nil, err
+	}
+	if id == "" {
+		resp, errSend := doClaudeUpstreamRequest(client, req)
+		return resp, nil, errSend
+	}
+	guardedClient := *client
+	guardedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if helps.IsAnthropicUpstreamURL(req.URL) && req.URL.Path == "/v1/messages/count_tokens" && req.Method == http.MethodPost {
+		resp, errSend := doClaudeUpstreamRequest(&guardedClient, req)
+		return resp, nil, errSend
+	}
+	if !helps.IsAnthropicUpstreamURL(req.URL) || req.URL.Path != "/v1/messages" || req.Method != http.MethodPost || req.GetBody == nil {
+		return nil, nil, fmt.Errorf("claude API budget: protected inference requires the first-party Messages endpoint and a replayable final payload")
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, nil, err
+	}
+	payload, err := io.ReadAll(body)
+	errClose := body.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+	if errClose != nil {
+		return nil, nil, errClose
+	}
+	reservation, err := helps.ReserveClaudeBudgetRequest(e.budgetPolicies[id], id, budget, payload,
+		helps.HeaderValueCaseInsensitive(req.Header, "anthropic-beta"), time.Now())
+	if err != nil {
+		return nil, nil, err
+	}
+	// Automatic POST redirects could replay paid generation without another reservation.
+	// A body factory plus an idempotency header can enable internal transport
+	// replays after an uncertain outcome. Explicit executor retries reserve anew.
+	guardedReq := req.Clone(req.Context())
+	guardedReq.GetBody = nil
+	resp, errSend := doClaudeUpstreamRequest(&guardedClient, guardedReq)
+	return resp, reservation, errSend
+}
+
 // claudeWireHeaderCasing maps Go's canonical header name to the exact casing
 // Claude Code 2.1.220 puts on the wire. Only the names that differ are listed;
 // the other twelve already survive canonicalisation unchanged.

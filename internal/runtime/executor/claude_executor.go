@@ -23,6 +23,7 @@ import (
 // If api_key is unavailable on auth, it falls back to legacy via ClientAdapter.
 type ClaudeExecutor struct {
 	cfg                     *config.Config
+	budgetPolicies          map[string]helps.ClaudeBudgetPolicy
 	requestLogProvider      string
 	upstreamModelNormalizer func(string) string
 	oauthProfileFetcher     claudeOAuthProfileFetcher
@@ -141,7 +142,7 @@ func logClaudeSignatureSanitizeReport(ctx context.Context, baseModel string, rep
 const defaultModelMaxTokens = 1024
 
 func NewClaudeExecutor(cfg *config.Config) *ClaudeExecutor {
-	return &ClaudeExecutor{cfg: cfg, oauthToolAliases: &claudeOAuthToolAliasStore{}}
+	return &ClaudeExecutor{cfg: cfg, budgetPolicies: helps.RegisterClaudeBudgetPolicies(cfg), oauthToolAliases: &claudeOAuthToolAliasStore{}}
 }
 
 func (e *ClaudeExecutor) Identifier() string { return "claude" }
@@ -252,11 +253,23 @@ func (e *ClaudeExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.Aut
 	if ctx == nil {
 		ctx = req.Context()
 	}
+	budgetID, _, errBudget := helps.ClaudeBudgetForAuth(e.cfg, auth)
+	if errBudget != nil {
+		return nil, errBudget
+	}
+	if budgetID != "" && !(helps.IsAnthropicUpstreamURL(req.URL) &&
+		((req.Method == http.MethodPost && req.URL.Path == "/v1/messages/count_tokens") ||
+			(req.Method == http.MethodGet && (req.URL.Path == "/v1/models" || strings.HasPrefix(req.URL.Path, "/v1/models/"))))) {
+		return nil, fmt.Errorf("claude API budget: generic HTTP generation is disabled for protected keys; use the Messages executor")
+	}
 	httpReq := req.WithContext(ctx)
 	if err := e.PrepareRequest(httpReq, auth); err != nil {
 		return nil, err
 	}
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
+	if budgetID != "" {
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	return httpClient.Do(httpReq)
 }
 

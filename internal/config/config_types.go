@@ -113,6 +113,9 @@ func defaultPluginInstanceConfigNode() *yaml.Node {
 
 // ClaudeConfig configures provider-wide Claude request behavior.
 type ClaudeConfig struct {
+	// APIBudgets are durable allowances shared by explicitly selected Claude API keys.
+	APIBudgets map[string]ClaudeAPIBudget `yaml:"api-budgets,omitempty" json:"api-budgets,omitempty"`
+
 	// ModelLevelCooling scopes Claude quota cooldowns to the requested model
 	// rather than cooling down the entire credential across all sibling models.
 	ModelLevelCooling bool `yaml:"model-level-cooling" json:"model-level-cooling"`
@@ -513,6 +516,9 @@ type CloakConfig struct {
 // ClaudeKey represents the configuration for a Claude API key,
 // including the API key itself and an optional base URL for the API endpoint.
 type ClaudeKey struct {
+	// BudgetID selects a shared allowance independently of the credential secret or generated auth ID.
+	BudgetID string `yaml:"budget-id,omitempty" json:"budget-id,omitempty"`
+
 	// APIKey is the authentication key for accessing Claude API services.
 	APIKey string `yaml:"api-key" json:"api-key"`
 

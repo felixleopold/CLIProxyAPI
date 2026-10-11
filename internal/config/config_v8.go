@@ -388,7 +388,7 @@ func expandV8Groups(groups *yaml.Node, provider string) (*yaml.Node, error) {
 		}
 		for i := 0; i < len(group.Content); i += 2 {
 			field := group.Content[i].Value
-			if field != "name" && field != "base-url" && field != "keys" && !sharedKeyFields[field] {
+			if field != "name" && field != "base-url" && field != "keys" && !sharedKeyFields[field] && !(provider == "claude" && field == "budget-id") {
 				return nil, fmt.Errorf("api-keys.%s: unsupported group field %s", provider, field)
 			}
 		}
@@ -402,7 +402,7 @@ func expandV8Groups(groups *yaml.Node, provider string) (*yaml.Node, error) {
 			item := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 			for i := 0; i < len(group.Content); i += 2 {
 				field := group.Content[i].Value
-				if field == "base-url" || sharedKeyFields[field] {
+				if field == "base-url" || sharedKeyFields[field] || (provider == "claude" && field == "budget-id") {
 					setYAMLPath(item, field, group.Content[i+1])
 				}
 			}
@@ -439,7 +439,7 @@ func groupLegacyKeys(keys *yaml.Node, provider string) *yaml.Node {
 			key := deepCopyNode(entry)
 			for i := 0; i < len(entry.Content); i += 2 {
 				field := entry.Content[i].Value
-				if field == "base-url" || sharedKeyFields[field] {
+				if field == "base-url" || sharedKeyFields[field] || (provider == "claude" && field == "budget-id") {
 					setYAMLPath(group, field, entry.Content[i+1])
 					deleteYAMLPath(key, field)
 				}
