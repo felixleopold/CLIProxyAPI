@@ -136,6 +136,37 @@ func TestClaudeBudgetRolloverAndAdjustmentPreserveSpend(t *testing.T) {
 	}
 }
 
+func TestClaudeBudgetSettlementFirstAfterAdjustedRenewal(t *testing.T) {
+	b, p, now := budgetTestConfig(t)
+	pending, err := ReserveClaudeBudget("shared", b, p, 10, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Persist settings that differ from the in-flight reservation's snapshot.
+	b.LimitMicroUSD = 1000
+	b.MonthlyAnchor = "2026-10-10T12:00:00"
+	b.Timezone = "Europe/Amsterdam"
+	if _, err = ReserveClaudeBudget("shared", b, p, 10, now); err == nil {
+		t.Fatal("lowered cap admitted another request")
+	}
+	renewal := time.Date(2026, 11, 10, 11, 0, 0, 0, time.UTC)
+	if err = pending.Settle(20, renewal); err != nil {
+		t.Fatal(err)
+	}
+	s := readBudgetTestState(t, b)
+	if s.UsedMicroUSD != 20 || len(s.Pending) != 0 || s.LimitMicroUSD != 1000 ||
+		s.CycleStart != renewal || s.NextRenewal != time.Date(2026, 12, 10, 11, 0, 0, 0, time.UTC) ||
+		s.Schedule != b.MonthlyAnchor+"@Europe/Amsterdam" {
+		t.Fatalf("settlement failed to renew using persisted settings: %#v", s)
+	}
+	if _, err = ReserveClaudeBudget("shared", b, p, 10, renewal); err == nil {
+		t.Fatal("admission discarded post-renewal settlement cost")
+	}
+	if s = readBudgetTestState(t, b); s.UsedMicroUSD != 20 || len(s.Pending) != 0 {
+		t.Fatalf("admission changed settled charges: %#v", s)
+	}
+}
+
 func TestClaudeBudgetScheduleTimezoneAndShortMonth(t *testing.T) {
 	b, _, _ := budgetTestConfig(t)
 	b.MonthlyAnchor = "2026-01-31T12:00:00"

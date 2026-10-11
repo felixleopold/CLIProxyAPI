@@ -173,7 +173,20 @@ func budgetTransaction(id string, b config.ClaudeAPIBudget, now time.Time, recon
 				return budgetError(503, "schedule change precedes the persisted cycle")
 			}
 			s.Schedule, s.NextRenewal = schedule, next
-		} else if reconcile && !now.Before(s.NextRenewal) {
+		} else if !now.Before(s.NextRenewal) {
+			if !reconcile {
+				// Settlement may be the first transaction after renewal. Use the
+				// persisted schedule, never the old reservation's captured settings.
+				anchor, zone, valid := strings.Cut(s.Schedule, "@")
+				if !valid {
+					return budgetError(503, "invalid persisted renewal schedule")
+				}
+				var errSchedule error
+				_, start, next, errSchedule = budgetSchedule(config.ClaudeAPIBudget{MonthlyAnchor: anchor, Timezone: zone}, now)
+				if errSchedule != nil {
+					return budgetError(503, "invalid persisted renewal schedule: %v", errSchedule)
+				}
+			}
 			// Pending requests can straddle renewal or survive a crash. Carry their
 			// whole bound into the new allowance until a proven settlement exists.
 			s.UsedMicroUSD, s.CycleStart, s.NextRenewal = pending, start, next
