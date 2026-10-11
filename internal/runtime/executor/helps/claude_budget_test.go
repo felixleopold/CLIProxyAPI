@@ -363,3 +363,26 @@ func TestClaudeBudgetUnpricedCompletedUsageBlocksUntilReconciled(t *testing.T) {
 		t.Fatal("cap change or renewal cleared unpriced-usage block")
 	}
 }
+
+func TestClaudeBudgetInlineToolsUseSameBillingRules(t *testing.T) {
+	b, _, _ := budgetTestConfig(t)
+	b.AllowedBetas = []string{"inline-tools-2026-09-15"}
+	for _, tc := range []struct {
+		name, tool string
+		allowed    bool
+	}{
+		{"custom", `{"type":"tool_definition","definition":{"name":"local","input_schema":{"type":"object"}}}`, true},
+		{"reference", `{"type":"tool_reference","name":"local"}`, true},
+		{"server tool", `{"type":"tool_definition","definition":{"type":"web_search_20250305","name":"web_search"}}`, false},
+		{"missing definition", `{"type":"tool_definition"}`, false},
+		{"unknown kind", `{"type":"mcp_toolset"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := `{"model":"test-model","max_tokens":10,"service_tier":"standard_only","tools":[{"name":"local","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":[{"type":"tool_addition","tool":` + tc.tool + `}]}]}`
+			_, _, err := ClaudeBudgetRequestPrice(b, []byte(payload), "inline-tools-2026-09-15")
+			if (err == nil) != tc.allowed {
+				t.Fatalf("allowed=%t, error=%v", tc.allowed, err)
+			}
+		})
+	}
+}

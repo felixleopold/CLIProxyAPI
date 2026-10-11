@@ -72,11 +72,24 @@ func ClaudeBudgetRequestPrice(b config.ClaudeAPIBudget, payload []byte, betas st
 		}
 	}
 	for _, tool := range r.Get("tools").Array() {
-		kind := tool.Get("type").String()
-		switch kind {
-		case "", "custom", "bash_20250124", "text_editor_20250124", "text_editor_20250429", "text_editor_20250728", "computer_20250124", "computer_20251124":
-		default:
-			return config.ClaudeAPIPrice{}, 0, budgetError(400, "unpriced server/tool type %q", kind)
+		if err := validateClaudeBudgetTool(tool); err != nil {
+			return config.ClaudeAPIPrice{}, 0, err
+		}
+	}
+	for _, message := range r.Get("messages").Array() {
+		for _, block := range message.Get("content").Array() {
+			if block.Get("type").String() != "tool_addition" {
+				continue
+			}
+			switch block.Get("tool.type").String() {
+			case "tool_reference": // References use definitions validated in tools[].
+			case "tool_definition":
+				if err := validateClaudeBudgetTool(block.Get("tool.definition")); err != nil {
+					return config.ClaudeAPIPrice{}, 0, err
+				}
+			default:
+				return config.ClaudeAPIPrice{}, 0, budgetError(400, "unpriced inline tool kind")
+			}
 		}
 	}
 	for _, edit := range r.Get("context_management.edits").Array() {
@@ -103,6 +116,20 @@ func ClaudeBudgetRequestPrice(b config.ClaudeAPIBudget, payload []byte, betas st
 		return price, 0, budgetError(400, "max_tokens must be a positive integer within the approved output ceiling")
 	}
 	return price, maxOutput, nil
+}
+
+// Inline definitions and the initial tool list share the same billing rules.
+func validateClaudeBudgetTool(tool gjson.Result) error {
+	if !tool.IsObject() {
+		return budgetError(400, "invalid tool definition")
+	}
+	kind := tool.Get("type").String()
+	switch kind {
+	case "", "custom", "bash_20250124", "text_editor_20250124", "text_editor_20250429", "text_editor_20250728", "computer_20250124", "computer_20251124":
+		return nil
+	default:
+		return budgetError(400, "unpriced server/tool type %q", kind)
+	}
 }
 
 func rejectClaudeBudgetDuplicateKeys(payload []byte) error {
