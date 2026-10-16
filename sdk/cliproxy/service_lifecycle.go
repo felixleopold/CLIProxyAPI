@@ -369,6 +369,8 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		}
 
 		usage.StopDefault()
+		// Let queued records reach the ledger before its final flush.
+		usage.DefaultManager().Wait(ctx)
 		usageledger.Default().Shutdown()
 	})
 	return shutdownErr

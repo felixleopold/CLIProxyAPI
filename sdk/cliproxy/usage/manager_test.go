@@ -2,7 +2,9 @@ package usage
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestStreamFromContextDefaultsMissingToFalse(t *testing.T) {
@@ -83,5 +85,35 @@ func TestRecordOmittedGenerateIsEnabled(t *testing.T) {
 	}
 	if !GenerateEnabled(record.Generate) {
 		t.Fatalf("GenerateEnabled(omitted) = false, want true")
+	}
+}
+
+type slowCountingPlugin struct {
+	mu    sync.Mutex
+	count int
+}
+
+func (p *slowCountingPlugin) HandleUsage(context.Context, Record) {
+	time.Sleep(time.Millisecond)
+	p.mu.Lock()
+	p.count++
+	p.mu.Unlock()
+}
+
+func TestWaitDeliversQueuedRecordsAfterStop(t *testing.T) {
+	m := NewManager(0)
+	plugin := &slowCountingPlugin{}
+	m.Register(plugin)
+	m.Start(context.Background())
+	for i := 0; i < 50; i++ {
+		m.Publish(context.Background(), Record{Model: "m"})
+	}
+	m.Stop()
+	m.Wait(context.Background())
+
+	plugin.mu.Lock()
+	defer plugin.mu.Unlock()
+	if plugin.count != 50 {
+		t.Fatalf("delivered %d records before Wait returned, want 50", plugin.count)
 	}
 }
