@@ -1118,6 +1118,30 @@ observability:
     enable: false
     addr: "127.0.0.1:8316"
 
+# Persistent per-client usage ledger: hourly UTC token buckets per client key
+# fingerprint, provider and upstream model. It records independently of
+# usage-statistics-enabled and of the usage queue. Cost is priced at query time
+# (GET /v8/management/observability/usage/ledger). Raw keys are never stored.
+usage-ledger:
+  enabled: false
+  # Ledger file. Empty means usage-ledger.json next to this config file.
+  path: ""
+  # Label client keys by fingerprint: the first 12 hex chars of sha256(api key).
+  # Also editable via PUT /v8/management/observability/usage/clients.
+  clients: []
+  #  - fingerprint: "a1b2c3d4e5f6"
+  #    device: "Mac"
+  #    user: "Felix"
+  # USD per 1M tokens; overrides or extends the built-in price table.
+  # model is an exact id, or a prefix with a trailing '*'. Omitted cache rates
+  # default to the input rate. Models without a price are reported as unpriced.
+  prices: []
+  #  - model: "claude-opus-5-5"
+  #    input: 4
+  #    output: 20
+  #    cache-read: 0.2
+  #    cache-write: 5
+
 # Standard dynamic library plugins are trusted in-process code. They are disabled by default.
 # Build Go examples with go build -buildmode=c-shared for the target GOOS/GOARCH.
 # Other languages can implement the same C ABI and JSON method protocol.

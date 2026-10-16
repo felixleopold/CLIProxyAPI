@@ -38,6 +38,9 @@ type Config struct {
 	// RemoteManagement nests management-related options under 'remote-management'.
 	RemoteManagement RemoteManagement `yaml:"remote-management" json:"-"`
 
+	// UsageLedger configures the persistent per-client usage ledger.
+	UsageLedger UsageLedgerConfig `yaml:"usage-ledger,omitempty" json:"usage-ledger"`
+
 	// Plugins configures dynamic plugin discovery and per-plugin settings.
 	Plugins PluginsConfig `yaml:"plugins" json:"plugins"`
 
