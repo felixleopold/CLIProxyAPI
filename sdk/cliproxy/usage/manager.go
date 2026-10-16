@@ -482,13 +482,16 @@ func StartDefault(ctx context.Context) { DefaultManager().Start(ctx) }
 func StopDefault() { DefaultManager().Stop() }
 
 // Wait blocks until a started dispatcher has delivered every queued record after
-// Stop, or until ctx is done. It returns immediately if Start was never called.
-func (m *Manager) Wait(ctx context.Context) {
+// Stop, or until ctx is done, returning ctx's error with records still queued.
+// It returns immediately if Start was never called.
+func (m *Manager) Wait(ctx context.Context) error {
 	if m == nil || m.cancel == nil {
-		return
+		return nil
 	}
 	select {
 	case <-m.done:
+		return nil
 	case <-ctx.Done():
+		return ctx.Err()
 	}
 }

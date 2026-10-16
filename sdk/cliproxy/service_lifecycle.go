@@ -370,7 +370,9 @@ func (s *Service) Shutdown(ctx context.Context) error {
 
 		usage.StopDefault()
 		// Let queued records reach the ledger before its final flush.
-		usage.DefaultManager().Wait(ctx)
+		if errWait := usage.DefaultManager().Wait(ctx); errWait != nil {
+			log.Warnf("usage: shutdown deadline reached with records still queued; ledger flush may be incomplete: %v", errWait)
+		}
 		usageledger.Default().Shutdown()
 	})
 	return shutdownErr

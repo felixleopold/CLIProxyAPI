@@ -109,7 +109,9 @@ func TestWaitDeliversQueuedRecordsAfterStop(t *testing.T) {
 		m.Publish(context.Background(), Record{Model: "m"})
 	}
 	m.Stop()
-	m.Wait(context.Background())
+	if err := m.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
 
 	plugin.mu.Lock()
 	defer plugin.mu.Unlock()
