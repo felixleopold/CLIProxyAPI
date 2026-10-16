@@ -1,6 +1,7 @@
 package usageledger
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -118,6 +119,20 @@ func (t *PriceTable) Entries() []Price {
 // matching prefix pattern; config beats built-in at equal specificity.
 func (t *PriceTable) Lookup(model string) (Price, bool) {
 	model = strings.TrimSpace(model)
+	if p, ok := t.lookup(model); ok {
+		return p, true
+	}
+	// Responses may report a dated snapshot such as gpt-5.5-2026-04-23.
+	if base := datedSuffix.ReplaceAllString(model, ""); base != model {
+		return t.lookup(base)
+	}
+	return Price{}, false
+}
+
+// datedSuffix matches a trailing snapshot date: -YYYY-MM-DD or -YYYYMMDD.
+var datedSuffix = regexp.MustCompile(`-\d{4}-?\d{2}-?\d{2}$`)
+
+func (t *PriceTable) lookup(model string) (Price, bool) {
 	var best Price
 	bestScore := -1
 	for _, p := range t.entries {

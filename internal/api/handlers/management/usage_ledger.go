@@ -18,12 +18,16 @@ var usageLedgerFingerprintPattern = regexp.MustCompile(`^[0-9a-f]{12}$`)
 // usageLedgerState snapshots the ledger config and client keys, replying 409
 // when the ledger is disabled.
 func (h *Handler) usageLedgerState(c *gin.Context) (config.UsageLedgerConfig, []string, bool) {
-	if h == nil || h.cfg == nil {
+	if h == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler unavailable"})
 		return config.UsageLedgerConfig{}, nil, false
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.cfg == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "handler unavailable"})
+		return config.UsageLedgerConfig{}, nil, false
+	}
 	cfg := h.cfg.UsageLedger
 	if !cfg.Enabled {
 		c.JSON(http.StatusConflict, gin.H{"error": "usage ledger disabled"})

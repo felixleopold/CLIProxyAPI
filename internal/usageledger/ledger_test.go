@@ -44,9 +44,11 @@ func TestRecordAggregatesAndNormalizesCacheTokens(t *testing.T) {
 		Detail: coreusage.Detail{InputTokens: 1000, OutputTokens: 200, ReasoningTokens: 50, CacheReadTokens: 400},
 	})
 	l.Record(coreusage.Record{Provider: "codex", Model: "gpt-6.1-sol", RequestedAt: at, Detail: coreusage.Detail{InputTokens: 10, OutputTokens: 1}})
+	// A failure after generation is still billed; one without usage is not.
 	failed := claudeRecord("key-a", at)
 	failed.Failed = true
 	l.Record(failed)
+	l.Record(coreusage.Record{Provider: "claude", Model: "claude-opus-5-5", APIKey: "key-a", RequestedAt: at, Failed: true})
 
 	got := l.Query(time.Time{}, time.Time{}, NewPriceTable(nil)).Buckets
 	if len(got) != 3 {
@@ -64,7 +66,7 @@ func TestRecordAggregatesAndNormalizesCacheTokens(t *testing.T) {
 		t.Fatalf("fingerprint %q is not 12 chars", fp)
 	}
 	want := map[string]Bucket{
-		"claude|" + fp: {Requests: 2, InputTokens: 200, OutputTokens: 60, CacheReadTokens: 100, CacheWriteTokens: 40, ReasoningTokens: 20},
+		"claude|" + fp: {Requests: 3, InputTokens: 300, OutputTokens: 90, CacheReadTokens: 150, CacheWriteTokens: 60, ReasoningTokens: 30},
 		"codex|" + fp:  {Requests: 1, InputTokens: 600, OutputTokens: 200, CacheReadTokens: 400, ReasoningTokens: 50},
 		"codex|":       {Requests: 1, InputTokens: 10, OutputTokens: 1},
 	}
@@ -92,6 +94,9 @@ func TestPriceLookup(t *testing.T) {
 	}
 	if p, ok := table.Lookup("my-model-v2"); !ok || p.Source != SourceConfig || p.CacheRead != 1 {
 		t.Errorf("config prefix = %+v ok=%v", p, ok)
+	}
+	if p, ok := table.Lookup("gpt-5.5-2026-04-23"); !ok || p.Model != "gpt-5.5" {
+		t.Errorf("dated snapshot = %+v ok=%v", p, ok)
 	}
 	if p, ok := table.Lookup("gpt-5.5"); !ok || p.Model != "gpt-5.5" {
 		t.Errorf("exact must beat nothing else = %+v ok=%v", p, ok)
@@ -133,5 +138,21 @@ func TestPersistenceRoundTrip(t *testing.T) {
 	}
 	if got.Buckets[0].CostUSD <= 0 {
 		t.Errorf("cost = %v, want > 0", got.Buckets[0].CostUSD)
+	}
+}
+
+func TestConfigureKeepsHistoryWhenFileUnreadable(t *testing.T) {
+	l, path := newEnabledLedger(t)
+	l.Record(claudeRecord("key-a", time.Now()))
+
+	// Switching to a path that exists but cannot be read must not drop or
+	// overwrite the current history.
+	unreadable := filepath.Join(t.TempDir(), "dir-not-file")
+	if err := os.Mkdir(unreadable, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	l.Configure(&config.Config{UsageLedger: config.UsageLedgerConfig{Enabled: true, Path: unreadable}}, "unused.yaml")
+	if l.path != path || len(l.buckets) != 1 || !l.enabled {
+		t.Fatalf("ledger switched despite unreadable target: path=%s buckets=%d", l.path, len(l.buckets))
 	}
 }

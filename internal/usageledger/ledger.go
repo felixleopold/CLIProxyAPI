@@ -111,7 +111,9 @@ func ResolvePath(cfg config.UsageLedgerConfig, configFile string) string {
 }
 
 // Configure applies the usage-ledger config. Enabling loads the file; disabling
-// or moving the file flushes first. Safe to call on every config reload.
+// or moving the file flushes first. A failed flush or load keeps the current
+// state so unsaved or existing history is never replaced; the next reload
+// retries. Safe to call on every config reload.
 func (l *Ledger) Configure(cfg *config.Config, configFile string) {
 	if l == nil || cfg == nil {
 		return
@@ -119,31 +121,33 @@ func (l *Ledger) Configure(cfg *config.Config, configFile string) {
 	enable := cfg.UsageLedger.Enabled
 	path := ResolvePath(cfg.UsageLedger, configFile)
 
+	// Hold both locks for the whole transition so concurrent records wait
+	// instead of being dropped, and no flush races the path change.
+	l.writeMu.Lock()
+	defer l.writeMu.Unlock()
 	l.mu.Lock()
-	if l.enabled && enable && l.path == path {
-		l.mu.Unlock()
+	defer l.mu.Unlock()
+	if l.enabled == enable && (!enable || l.path == path) {
 		return
 	}
-	wasEnabled := l.enabled
-	l.enabled = false
-	l.mu.Unlock()
-
-	if wasEnabled {
-		if err := l.Flush(); err != nil {
-			log.Errorf("usage ledger: flush failed: %v", err)
+	if l.enabled && l.dirty {
+		snapshot := sortedBuckets(l.buckets, time.Time{}, time.Time{})
+		if err := writeFile(l.path, fileFormat{Version: fileVersion, Buckets: snapshot}); err != nil {
+			log.Errorf("usage ledger: flush before reconfigure failed, keeping %s: %v", l.path, err)
+			return
 		}
+		l.dirty = false
 	}
 	if !enable {
+		l.enabled = false
 		return
 	}
 	buckets, err := load(path)
 	if err != nil {
-		log.Errorf("usage ledger: %v", err)
-		buckets = make(map[bucketKey]*Bucket)
+		log.Errorf("usage ledger: not switching to %s: %v", path, err)
+		return
 	}
-	l.mu.Lock()
 	l.path, l.buckets, l.dirty, l.enabled = path, buckets, false, true
-	l.mu.Unlock()
 	log.Infof("usage ledger: recording to %s", path)
 }
 
@@ -157,12 +161,16 @@ func (l *Ledger) Shutdown() {
 	}
 }
 
-// Record adds one completed request. Failed requests are not billed and are skipped.
+// Record adds one request. Failed requests count only when upstream reported
+// usage, since a failure after generation is still billed.
 func (l *Ledger) Record(rec coreusage.Record) {
-	if l == nil || rec.Failed {
+	if l == nil {
 		return
 	}
 	tokens := normalizeTokens(rec)
+	if rec.Failed && tokens == (tokenCounts{}) {
+		return
+	}
 	key := bucketKey{
 		hour:        hourOf(rec.RequestedAt, l.now()).Unix(),
 		fingerprint: Fingerprint(rec.APIKey),
@@ -200,8 +208,12 @@ func (l *Ledger) Record(rec coreusage.Record) {
 }
 
 // recordModel picks the model that best matches what upstream billed: the
-// post-alias upstream model (Record.Model), not the alias the client asked for.
+// model the response reports (an upstream may serve a different one), then the
+// post-alias upstream model, then the alias the client asked for.
 func recordModel(rec coreusage.Record) string {
+	if m := strings.TrimSpace(rec.ResponseModel); m != "" {
+		return m
+	}
 	if m := strings.TrimSpace(rec.Model); m != "" {
 		return m
 	}
@@ -269,7 +281,8 @@ func load(path string) (map[bucketKey]*Bucket, error) {
 		if errRename := os.Rename(path, backup); errRename != nil {
 			return nil, fmt.Errorf("ledger %s unreadable (version %d, %v) and could not be moved aside: %w", path, f.Version, err, errRename)
 		}
-		return nil, fmt.Errorf("ledger %s unreadable (version %d, %v); moved to %s and starting empty", path, f.Version, err, backup)
+		log.Errorf("usage ledger: %s unreadable (version %d, %v); moved to %s and starting empty", path, f.Version, err, backup)
+		return buckets, nil
 	}
 	for i := range f.Buckets {
 		b := f.Buckets[i]
