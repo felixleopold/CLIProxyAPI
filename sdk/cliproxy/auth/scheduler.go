@@ -970,11 +970,15 @@ func (s *authScheduler) upsertAuthResultLocked(auth *Auth, targetModels []string
 	// If credential-level availability changed, all model shards must be synchronized.
 	modelCount := len(modelSet)
 	wasBlocked := false
+	var wasCapUntil time.Time
 	if existingMeta != nil {
 		wasBlocked = isCredentialBlocked(existingMeta.auth, modelCount, now)
+		_, wasCapUntil = codexUsageCapBlock(existingMeta.auth, now)
 	}
 	isBlocked := isCredentialBlocked(auth, modelCount, now)
-	credentialAvailabilityChanged := wasBlocked != isBlocked
+	_, capUntil := codexUsageCapBlock(auth, now)
+	// A later window can extend the cap while the credential stays blocked.
+	credentialAvailabilityChanged := wasBlocked != isBlocked || !wasCapUntil.Equal(capUntil)
 
 	if modelSetChanged || credentialScoped || credentialAvailabilityChanged || len(targetModels) == 0 {
 		// Synchronize all shards when model sets change, when failures are credential-scoped,

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -39,13 +40,24 @@ func codexUsageCapBlock(auth *Auth, now time.Time) (bool, time.Time) {
 	return !until.IsZero(), until
 }
 
+// UsageCapReached reports whether a credential is held back by its configured
+// usage cap. Callers outside the scheduler use it to keep pins consistent.
+func UsageCapReached(auth *Auth, now time.Time) bool {
+	capped, _ := codexUsageCapBlock(auth, now)
+	return capped
+}
+
 func usageCapPercent(metadata map[string]any) (float64, bool) {
 	var limit float64
 	switch value := metadata[MetadataUsageCapPercent].(type) {
 	case float64:
 		limit = value
-	case int:
-		limit = float64(value)
+	case json.Number:
+		parsed, errParse := value.Float64()
+		if errParse != nil {
+			return 0, false
+		}
+		limit = parsed
 	case string:
 		parsed, errParse := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if errParse != nil {

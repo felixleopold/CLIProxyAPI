@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ func TestSchedulerPick_CodexUsageCapSkipsCredentialUntilUsageDrops(t *testing.T)
 	capped := &Auth{
 		ID: "plus", Provider: "codex",
 		Attributes: map[string]string{"priority": "10"},
-		Metadata:   map[string]any{MetadataUsageCapPercent: float64(80)},
+		Metadata:   map[string]any{MetadataUsageCapPercent: json.Number("80")},
 		Quota: QuotaState{ObservedAt: time.Now(), Signals: map[string]string{
 			"X-Codex-Primary-Used-Percent":   "12",
 			"X-Codex-Primary-Reset-At":       resetAt,
