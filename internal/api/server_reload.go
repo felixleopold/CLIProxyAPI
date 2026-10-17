@@ -12,6 +12,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/githubauth"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/managementasset"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/quotahistory"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/redisqueue"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/usageledger"
@@ -97,6 +98,7 @@ func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) b
 	}
 
 	usageledger.Default().Configure(cfg, s.configFilePath)
+	quotahistory.Default().Configure(cfg, s.configFilePath)
 
 	if s.requestLogger != nil && (oldCfg == nil || oldCfg.ErrorLogsMaxFiles != cfg.ErrorLogsMaxFiles) {
 		if setter, ok := s.requestLogger.(interface{ SetErrorLogsMaxFiles(int) }); ok {

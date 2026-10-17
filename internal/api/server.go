@@ -26,6 +26,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/managementasset"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/quotahistory"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/redisqueue"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/usageledger"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
@@ -208,6 +209,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	}
 	githubauth.SetToken(cfg.GitHubToken)
 	usageledger.Default().Configure(cfg, configFilePath)
+	quotahistory.Default().Configure(cfg, configFilePath)
 	managementasset.SetCurrentConfig(cfg)
 	auth.SetQuotaCooldownDisabled(cfg.DisableCooling)
 	auth.SetTransientErrorCooldownSeconds(cfg.TransientErrorCooldownSeconds)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/api"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/quotahistory"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/redisqueue"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
@@ -57,6 +58,9 @@ func (s *Service) Run(ctx context.Context) error {
 	s.startModelCatalogUpdaters(ctx)
 
 	usage.StartDefault(ctx)
+	if s.coreManager != nil {
+		go quotahistory.Default().Run(ctx, s.coreManager.List)
+	}
 	homeEnabled := s.cfg != nil && s.cfg.Home.Enabled
 	if homeEnabled {
 		forceHomeRuntimeConfig(s.cfg)
@@ -374,6 +378,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			log.Warnf("usage: shutdown deadline reached with records still queued; ledger flush may be incomplete: %v", errWait)
 		}
 		usageledger.Default().Shutdown()
+		quotahistory.Default().Shutdown()
 	})
 	return shutdownErr
 }
