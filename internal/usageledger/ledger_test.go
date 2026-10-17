@@ -156,3 +156,33 @@ func TestConfigureKeepsHistoryWhenFileUnreadable(t *testing.T) {
 		t.Fatalf("ledger switched despite unreadable target: path=%s buckets=%d", l.path, len(l.buckets))
 	}
 }
+
+func TestRecordSplitsBucketsByAuthID(t *testing.T) {
+	l, _ := newEnabledLedger(t)
+	at := time.Date(2026, 10, 12, 7, 5, 0, 0, time.UTC)
+	for _, id := range []string{"auth-a", " auth-b ", "auth-a"} {
+		rec := claudeRecord("key-a", at)
+		rec.AuthID = id
+		l.Record(rec)
+	}
+	got := l.Query(time.Time{}, time.Time{}, NewPriceTable(nil)).Buckets
+	if len(got) != 2 || got[0].AuthID != "auth-a" || got[0].Requests != 2 || got[1].AuthID != "auth-b" || got[1].Requests != 1 {
+		t.Fatalf("buckets = %+v", got)
+	}
+
+	// A bucket persisted before attribution has no auth_id and loads with "".
+	old := filepath.Join(t.TempDir(), "old.json")
+	legacy := `{"version":1,"buckets":[{"hour":"2026-10-12T07:00:00Z","fingerprint":"abc","provider":"claude","model":"m","requests":4}]}`
+	if err := os.WriteFile(old, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	buckets, err := load(old)
+	if err != nil || len(buckets) != 1 {
+		t.Fatalf("load = %v, %v", buckets, err)
+	}
+	for _, b := range buckets {
+		if b.AuthID != "" || b.Requests != 4 {
+			t.Errorf("legacy bucket = %+v", b)
+		}
+	}
+}

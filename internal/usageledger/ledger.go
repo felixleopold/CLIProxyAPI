@@ -41,13 +41,16 @@ func Fingerprint(key string) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-// Bucket holds the token counts of one (hour, client, provider, model) key.
+// Bucket holds the token counts of one (hour, client, provider, credential,
+// model) key. AuthID is the serving credential; "" for buckets recorded before
+// credential attribution.
 // InputTokens excludes cache tokens. OutputTokens includes reasoning tokens,
 // which ReasoningTokens reports as a subset, so output is billed once.
 type Bucket struct {
 	Hour             time.Time `json:"hour"`
 	Fingerprint      string    `json:"fingerprint"`
 	Provider         string    `json:"provider"`
+	AuthID           string    `json:"auth_id"`
 	Model            string    `json:"model"`
 	Requests         int64     `json:"requests"`
 	InputTokens      int64     `json:"input_tokens"`
@@ -68,6 +71,7 @@ type bucketKey struct {
 	hour        int64
 	fingerprint string
 	provider    string
+	authID      string
 	model       string
 }
 
@@ -175,6 +179,7 @@ func (l *Ledger) Record(rec coreusage.Record) {
 		hour:        hourOf(rec.RequestedAt, l.now()).Unix(),
 		fingerprint: Fingerprint(rec.APIKey),
 		provider:    strings.ToLower(strings.TrimSpace(rec.Provider)),
+		authID:      strings.TrimSpace(rec.AuthID),
 		model:       recordModel(rec),
 	}
 	if key.provider == "" {
@@ -188,7 +193,7 @@ func (l *Ledger) Record(rec coreusage.Record) {
 	}
 	b := l.buckets[key]
 	if b == nil {
-		b = &Bucket{Hour: time.Unix(key.hour, 0).UTC(), Fingerprint: key.fingerprint, Provider: key.provider, Model: key.model}
+		b = &Bucket{Hour: time.Unix(key.hour, 0).UTC(), Fingerprint: key.fingerprint, Provider: key.provider, AuthID: key.authID, Model: key.model}
 		l.buckets[key] = b
 	}
 	b.Requests++
@@ -287,7 +292,7 @@ func load(path string) (map[bucketKey]*Bucket, error) {
 	for i := range f.Buckets {
 		b := f.Buckets[i]
 		b.Hour = b.Hour.UTC().Truncate(time.Hour)
-		buckets[bucketKey{b.Hour.Unix(), b.Fingerprint, b.Provider, b.Model}] = &b
+		buckets[bucketKey{b.Hour.Unix(), b.Fingerprint, b.Provider, b.AuthID, b.Model}] = &b
 	}
 	return buckets, nil
 }
@@ -373,6 +378,9 @@ func sortedBuckets(m map[bucketKey]*Bucket, from, to time.Time) []Bucket {
 		}
 		if a.Provider != b.Provider {
 			return a.Provider < b.Provider
+		}
+		if a.AuthID != b.AuthID {
+			return a.AuthID < b.AuthID
 		}
 		return a.Model < b.Model
 	})
