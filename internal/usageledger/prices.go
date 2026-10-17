@@ -28,6 +28,8 @@ type Price struct {
 //   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
 //   - OpenAI (Standard tier, context up to 272K input tokens):
 //     https://developers.openai.com/api/docs/pricing
+//   - Google (Gemini API paid Standard tier, verified 2026-10-17):
+//     https://ai.google.dev/gemini-api/docs/pricing
 //
 // Deliberate simplifications:
 //   - Claude cache writes use the 5 minute rate; usage records do not split 5m/1h.
@@ -35,6 +37,12 @@ type Price struct {
 //     page has a cheaper tier up to 100K prompt tokens), so it overcharges.
 //   - OpenAI long-context (>272K) surcharges are not modeled.
 //   - gpt-5.5 has no separate cache-write rate; writes cost the input rate.
+//   - Gemini prefixes also price provider variants of the same model (Antigravity
+//     reports e.g. gemini-3.8-flash-n). Cache writes cost the input rate; Gemini
+//     bills cache storage per hour instead, which is not modeled. 3.1 Pro uses
+//     the up-to-200K-prompt tier. Google has announced increases (Argon on
+//     2026-12-01, 3.6/3.8 Flash on 2027-01-01); costs are computed at query time,
+//     so update these rows then.
 //   - Models absent from the pages are unpriced on purpose: claude-3-7-sonnet-*,
 //     codex-auto-review. Unpriced models are reported, never guessed.
 var builtinPrices = []Price{
@@ -68,6 +76,11 @@ var builtinPrices = []Price{
 	{Model: "gpt-5.6-terra", Input: 2, Output: 12, CacheRead: 0.2, CacheWrite: 2.5},
 	{Model: "gpt-5.6-luna", Input: 0.2, Output: 1.2, CacheRead: 0.02, CacheWrite: 0.25},
 	{Model: "gpt-5.5", Input: 5, Output: 30, CacheRead: 0.5, CacheWrite: 5},
+
+	{Model: "gemini-4-argon*", Input: 2, Output: 10, CacheRead: 0.1, CacheWrite: 2},
+	{Model: "gemini-3.8-flash*", Input: 0.75, Output: 3.75, CacheRead: 0.075, CacheWrite: 0.75},
+	{Model: "gemini-3.6-flash*", Input: 0.75, Output: 3.75, CacheRead: 0.075, CacheWrite: 0.75},
+	{Model: "gemini-3.1-pro*", Input: 2, Output: 12, CacheRead: 0.2, CacheWrite: 2},
 }
 
 // PriceTable resolves model ids to prices; config entries override built-ins.
