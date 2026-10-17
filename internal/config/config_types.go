@@ -277,6 +277,35 @@ type TLSConfig struct {
 	Key string `yaml:"key" json:"key"`
 }
 
+// UsageLedgerConfig configures the persistent per-client usage ledger.
+type UsageLedgerConfig struct {
+	// Enabled turns the ledger on. It is independent of usage-statistics-enabled.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Path is the ledger file. Empty means usage-ledger.json next to the config file.
+	Path string `yaml:"path" json:"path"`
+	// Clients labels client API keys by fingerprint; raw keys are never stored.
+	Clients []UsageLedgerClient `yaml:"clients" json:"clients"`
+	// Prices overrides or extends the built-in USD per 1M token price table.
+	Prices []UsageLedgerPrice `yaml:"prices" json:"prices"`
+}
+
+// UsageLedgerClient labels one client key (first 12 hex chars of sha256(api key)).
+type UsageLedgerClient struct {
+	Fingerprint string `yaml:"fingerprint" json:"fingerprint"`
+	Device      string `yaml:"device" json:"device"`
+	User        string `yaml:"user" json:"user"`
+}
+
+// UsageLedgerPrice is a USD per 1M tokens rate. Model is an exact id, or a prefix
+// with a trailing '*'. Omitted cache rates default to the input rate.
+type UsageLedgerPrice struct {
+	Model      string   `yaml:"model" json:"model"`
+	Input      float64  `yaml:"input" json:"input"`
+	Output     float64  `yaml:"output" json:"output"`
+	CacheRead  *float64 `yaml:"cache-read,omitempty" json:"cache-read,omitempty"`
+	CacheWrite *float64 `yaml:"cache-write,omitempty" json:"cache-write,omitempty"`
+}
+
 // PprofConfig holds pprof HTTP server settings.
 type PprofConfig struct {
 	// Enable toggles the pprof HTTP debug server.

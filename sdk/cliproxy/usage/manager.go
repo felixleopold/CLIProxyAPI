@@ -307,6 +307,7 @@ type Manager struct {
 	cond   *sync.Cond
 	queue  []queueItem
 	closed bool
+	done   chan struct{}
 
 	pluginsMu sync.RWMutex
 	plugins   []Plugin
@@ -315,7 +316,7 @@ type Manager struct {
 
 // NewManager constructs a manager with a buffered queue.
 func NewManager(buffer int) *Manager {
-	m := &Manager{}
+	m := &Manager{done: make(chan struct{})}
 	m.cond = sync.NewCond(&m.mu)
 	return m
 }
@@ -425,6 +426,7 @@ func (m *Manager) run(ctx context.Context) {
 		}
 		if len(m.queue) == 0 && m.closed {
 			m.mu.Unlock()
+			close(m.done)
 			return
 		}
 		item := m.queue[0]
@@ -478,3 +480,18 @@ func StartDefault(ctx context.Context) { DefaultManager().Start(ctx) }
 
 // StopDefault stops the default manager's dispatcher.
 func StopDefault() { DefaultManager().Stop() }
+
+// Wait blocks until a started dispatcher has delivered every queued record after
+// Stop, or until ctx is done, returning ctx's error with records still queued.
+// It returns immediately if Start was never called.
+func (m *Manager) Wait(ctx context.Context) error {
+	if m == nil || m.cancel == nil {
+		return nil
+	}
+	select {
+	case <-m.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}

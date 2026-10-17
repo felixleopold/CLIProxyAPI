@@ -12,6 +12,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/redisqueue"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/usageledger"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v8/sdk/access"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -368,6 +369,11 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		}
 
 		usage.StopDefault()
+		// Let queued records reach the ledger before its final flush.
+		if errWait := usage.DefaultManager().Wait(ctx); errWait != nil {
+			log.Warnf("usage: shutdown deadline reached with records still queued; ledger flush may be incomplete: %v", errWait)
+		}
+		usageledger.Default().Shutdown()
 	})
 	return shutdownErr
 }
