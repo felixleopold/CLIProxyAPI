@@ -239,6 +239,9 @@ func (m *Manager) clientModelProjectionForAuth(auth *Auth, routeModel string, no
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {
 		isSuspended = true
 	}
+	if capped, _ := codexUsageCapBlock(auth, now); capped {
+		isSuspended = true
+	}
 	isQuotaExceeded := false
 	var suspendReason string
 	if state != nil {

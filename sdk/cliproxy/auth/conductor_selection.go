@@ -1135,6 +1135,9 @@ func retryRoundAvailabilityForAuth(auth *Auth, model string, now time.Time) (boo
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {
 		return credentialRetryRoundStateEligible(auth.LastError, true), next
 	}
+	if capped, _ := codexUsageCapBlock(auth, now); capped {
+		return true, next
+	}
 
 	modelKey := canonicalModelKey(model)
 	if modelKey != "" && len(auth.ModelStates) > 0 {

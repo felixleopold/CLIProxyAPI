@@ -31,6 +31,10 @@ func CooldownSnapshotForAuth(auth *Auth, now time.Time) []CooldownView {
 	// auth-level fields can be model aggregates and must not become global gates.
 	if auth.Quota.Exceeded && auth.Quota.Reason == "credential_quota" && auth.Quota.NextRecoverAt.After(now) {
 		views = append(views, newCooldownView("credential", "", auth.Quota.NextRecoverAt, now, auth.Quota, auth.StatusMessage, auth.LastError))
+	} else if capped, until := codexUsageCapBlock(auth, now); capped {
+		view := newCooldownView("credential", "", until, now, QuotaState{}, "", nil)
+		view.Reason = "usage_cap"
+		views = append(views, view)
 	} else if len(auth.ModelStates) == 0 {
 		if blocked, _, next := availabilityBlock(auth.Unavailable, auth.Quota.Exceeded, auth.NextRetryAfter, auth.Quota.NextRecoverAt, now); blocked && next.After(now) {
 			views = append(views, newCooldownView("credential", "", next, now, auth.Quota, auth.StatusMessage, auth.LastError))
