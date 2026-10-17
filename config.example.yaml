@@ -1142,6 +1142,15 @@ usage-ledger:
   #    cache-read: 0.2
   #    cache-write: 5
 
+# Persistent per-credential quota usage history: every 5 minutes the passive
+# quota snapshot of each Claude/Codex credential is sampled into used-percent
+# points per quota window (weekly/session), kept for 35 days. No upstream
+# requests are made (GET /v8/management/observability/quota/history).
+quota-history:
+  enabled: false
+  # History file. Empty means quota-history.json next to this config file.
+  path: ""
+
 # Standard dynamic library plugins are trusted in-process code. They are disabled by default.
 # Build Go examples with go build -buildmode=c-shared for the target GOOS/GOARCH.
 # Other languages can implement the same C ABI and JSON method protocol.

@@ -41,6 +41,9 @@ type Config struct {
 	// UsageLedger configures the persistent per-client usage ledger.
 	UsageLedger UsageLedgerConfig `yaml:"usage-ledger,omitempty" json:"usage-ledger"`
 
+	// QuotaHistory configures the persistent per-credential quota usage history.
+	QuotaHistory QuotaHistoryConfig `yaml:"quota-history,omitempty" json:"quota-history"`
+
 	// Plugins configures dynamic plugin discovery and per-plugin settings.
 	Plugins PluginsConfig `yaml:"plugins" json:"plugins"`
 

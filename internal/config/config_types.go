@@ -289,6 +289,14 @@ type UsageLedgerConfig struct {
 	Prices []UsageLedgerPrice `yaml:"prices" json:"prices"`
 }
 
+// QuotaHistoryConfig configures the persistent per-credential quota usage history.
+type QuotaHistoryConfig struct {
+	// Enabled turns the history on.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Path is the history file. Empty means quota-history.json next to the config file.
+	Path string `yaml:"path" json:"path"`
+}
+
 // UsageLedgerClient labels one client key (first 12 hex chars of sha256(api key)).
 type UsageLedgerClient struct {
 	Fingerprint string `yaml:"fingerprint" json:"fingerprint"`
